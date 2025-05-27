@@ -7,7 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen">
-    <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-2xl">
+    <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-3xl">
         <h1 class="text-2xl font-bold mb-4 text-center">資安事件分析工具</h1>
         <p class="text-gray-600 mb-4">請上傳資安事件報告檔案（.txt）或直接貼上文字內容進行分析。</p>
         
@@ -80,43 +80,69 @@
             function processIncident(text) {
                 // Initialize data object
                 const data = {
-                    classification: '',
-                    severity: '',
-                    detectionTimeLocal: '',
-                    detectionTimeUTC: '',
-                    malwareType: '',
-                    remediationStatus: '',
-                    hostName: '',
-                    hostIP: '',
-                    os: '',
-                    filePath: '',
-                    fileSignature: '',
-                    fileSHA256: '',
-                    parentProcess: '',
-                    grandparentProcess: '',
-                    socEmail: '',
-                    socPhone: ''
+                    classification: '未知',
+                    severity: '未知',
+                    detectionTimeLocal: '未知',
+                    detectionTimeUTC: '未知',
+                    malwareType: '未知',
+                    remediationStatus: '未知',
+                    hostName: '未知',
+                    hostIP: '未知',
+                    os: '未知',
+                    filePath: '未知',
+                    fileSignature: '未知',
+                    fileSHA256: '未知',
+                    processPath: '未知',
+                    parentProcess: '未知',
+                    grandparentProcess: '未知',
+                    socEmail: '未知',
+                    socPhone: '未知'
                 };
 
                 // Parse text for key fields
                 const lines = text.split('\n');
                 lines.forEach(line => {
-                    if (line.includes('Classification:')) data.classification = line.split('Classification:')[1].trim();
-                    if (line.includes('Severity:')) data.severity = line.split('Severity:')[1].trim();
-                    if (line.includes('Detection Time Local')) data.detectionTimeLocal = line.split('Detection Time Local')[1].trim();
-                    if (line.includes('Detection Time UTC')) data.detectionTimeUTC = line.split('Detection Time UTC')[1].trim();
-                    if (line.includes('Malware Type')) data.malwareType = line.split('Malware Type')[1].trim();
-                    if (line.includes('Remediation Status')) data.remediationStatus = line.split('Remediation Status')[1].trim();
-                    if (line.includes('Hostname')) data.hostName = line.split('Hostname')[1].trim();
-                    if (line.includes('Host Ip')) data.hostIP = line.split('Host Ip')[1].trim();
-                    if (line.includes('OS Version')) data.os = line.split('OS Version')[1].trim();
-                    if (line.includes('Infected file')) data.filePath = line.split('Infected file')[1].trim();
-                    if (line.includes('Infected file SignatureStatus')) data.fileSignature = line.split('Infected file SignatureStatus')[1].trim();
-                    if (line.includes('Infected file SHA256')) data.fileSHA256 = line.split('Infected file SHA256')[1].trim();
-                    if (line.includes('Process Path') && line.includes('lsass.exe')) data.parentProcess = line.split('Process Path')[1].trim();
-                    if (line.includes('Process Path') && line.includes('wininit.exe')) data.grandparentProcess = line.split('Process Path')[1].trim();
-                    if (line.includes('SOC Email')) data.socEmail = line.split('SOC Email')[1].trim();
-                    if (line.includes('SOC Phone')) data.socPhone = line.split('SOC Phone')[1].trim().replace(/US:/g, '美國:').replace(/EU:/g, '歐洲:').replace(/IL:/g, '以色列:');
+                    const trimmedLine = line.trim();
+                    if (trimmedLine.match(/Classification:/i)) {
+                        const value = trimmedLine.split(/Classification:/i)[1].trim();
+                        data.classification = value.includes('Malicious Binary') ? '惡意二進位檔案' + (value.includes('Infected File') ? ' - 受感染檔案寫入磁碟' : '') : value;
+                    }
+                    if (trimmedLine.match(/Severity:/i)) {
+                        const value = trimmedLine.split(/Severity:/i)[1].trim();
+                        data.severity = value === 'High' ? '高' : value === 'Critical' ? '危急' : value;
+                    }
+                    if (trimmedLine.match(/Detection Time Local/i)) data.detectionTimeLocal = trimmedLine.split(/Detection Time Local/i)[1].trim();
+                    if (trimmedLine.match(/Detection Time UTC/i)) data.detectionTimeUTC = trimmedLine.split(/Detection Time UTC/i)[1].trim();
+                    if (trimmedLine.match(/Malware Type/i)) {
+                        const value = trimmedLine.split(/Malware Type/i)[1].trim();
+                        data.malwareType = value.includes('trojan') ? '特洛伊木馬' + (value.includes('Ransom') ? '（可能為勒索軟體）' : '') : value;
+                    }
+                    if (trimmedLine.match(/Remediation Status/i)) {
+                        const status = trimmedLine.split(/Remediation Status/i)[1].trim();
+                        if (status.includes('.cynet')) {
+                            data.remediationStatus = '檔案已重新命名為 .cynet 副檔名，成功隔離';
+                        } else if (status.includes('Failed to be renamed')) {
+                            data.remediationStatus = '檔案重新命名失敗';
+                        } else if (status.includes('Kill Process')) {
+                            data.remediationStatus = '已終止進程' + (status.includes('Nothing') ? '，但無其他動作' : '');
+                        } else {
+                            data.remediationStatus = status;
+                        }
+                    }
+                    if (trimmedLine.match(/Hostname/i) && !data.hostName.match(/[^未知]/)) data.hostName = trimmedLine.split(/Hostname/i)[1].trim();
+                    if (trimmedLine.match(/Host Ip/i)) data.hostIP = trimmedLine.split(/Host Ip/i)[1].trim();
+                    if (trimmedLine.match(/OS Version/i)) data.os = trimmedLine.split(/OS Version/i)[1].trim();
+                    if (trimmedLine.match(/Infected file/i) && !trimmedLine.match(/SignatureStatus|VerifyStatus|CertTrustResult|ConfigSignStatus/)) data.filePath = trimmedLine.split(/Infected file/i)[1].trim();
+                    if (trimmedLine.match(/Infected file SignatureStatus/i)) {
+                        const value = trimmedLine.split(/Infected file SignatureStatus/i)[1].trim();
+                        data.fileSignature = value === 'Missing' ? '無簽章' : value;
+                    }
+                    if (trimmedLine.match(/Infected file SHA256|Process SHA256/i) && trimmedLine.match(/[A-F0-9]{64}/)) data.fileSHA256 = trimmedLine.match(/[A-F0-9]{64}/)[0];
+                    if (trimmedLine.match(/Process Path/i) && trimmedLine.includes('mssecsvc.exe')) data.processPath = trimmedLine.split(/Process Path/i)[1].trim();
+                    if (trimmedLine.match(/Process Path/i) && trimmedLine.includes('lsass.exe')) data.parentProcess = trimmedLine.split(/Process Path/i)[1].trim();
+                    if (trimmedLine.match(/Process Path/i) && trimmedLine.includes('wininit.exe')) data.grandparentProcess = trimmedLine.split(/Process Path/i)[1].trim();
+                    if (trimmedLine.match(/SOC Email/i)) data.socEmail = trimmedLine.split(/SOC Email/i)[1].trim();
+                    if (trimmedLine.match(/SOC Phone/i)) data.socPhone = trimmedLine.split(/SOC Phone/i)[1].trim().replace(/US:/g, '美國:').replace(/EU:/g, '歐洲:').replace(/IL:/g, '以色列:');
                 });
 
                 // Generate table rows
@@ -130,16 +156,16 @@
                     { label: '主機名稱', value: data.hostName },
                     { label: '主機 IP', value: data.hostIP },
                     { label: '作業系統', value: data.os },
-                    { label: '受感染檔案', value: data.filePath },
+                    { label: '受感染檔案或進程', value: data.processPath || data.filePath },
                     { label: '檔案簽章', value: data.fileSignature },
                     { label: '檔案 SHA256', value: data.fileSHA256 },
                     { label: '父進程', value: data.parentProcess },
                     { label: '祖父進程', value: data.grandparentProcess },
-                    { label: 'SOC 聯繫方式', value: `${data.socEmail}<br>${data.socPhone}` }
+                    { label: 'SOC 聯繫方式', value: data.socEmail && data.socPhone ? `${data.socEmail}<br>${data.socPhone}` : data.socEmail || data.socPhone }
                 ];
 
                 fields.forEach(field => {
-                    if (field.value) {
+                    if (field.value !== '未知') {
                         const row = `<tr><td class="border border-gray-300 p-2 font-semibold">${field.label}</td><td class="border border-gray-300 p-2">${field.value}</td></tr>`;
                         outputTable.innerHTML += row;
                     }
@@ -149,11 +175,12 @@
                 recommendations.innerHTML = `
                     <h3 class="text-lg font-semibold mb-2">檢查建議</h3>
                     <ul class="list-disc pl-5">
-                        <li>確認檔案 <code>${data.filePath}</code> 是否已重新命名為 .cynet。</li>
-                        <li>使用防毒軟體對主機 ${data.hostName} (${data.hostIP}) 進行全系統掃描。</li>
-                        <li>檢查進程 <code>${data.parentProcess}</code> 和 <code>${data.grandparentProcess}</code> 是否異常。</li>
-                        <li>監控主機網路活動，確認無異常連線。</li>
-                        <li>升級 ${data.os} 至受支援版本（該系統已停止支援）。</li>
+                        <li>確認檔案或進程 <code>${data.processPath || data.filePath}</code> 是否已隔離或終止，檢查處理狀態是否為「${data.remediationStatus}」。</li>
+                        <li>使用防毒軟體對主機 ${data.hostName} (${data.hostIP}) 進行全系統掃描，確保無其他惡意檔案或進程。</li>
+                        <li>檢查進程 <code>${data.parentProcess}</code> 和 <code>${data.grandparentProcess}</code> 是否有異常行為，可能需使用進程監控工具（如 Process Explorer）。</li>
+                        <li>監控主機 ${data.hostIP} 的網路活動，確認是否與可疑 IP 或域名通訊。</li>
+                        <li>若作業系統為 ${data.os}，檢查是否過時（如 Windows Server 2008 R2 已停止支援），建議升級至受支援版本（如 Windows Server 2022）。</li>
+                        <li>聯繫 SOC (${data.socEmail || '未知'}) 報告事件，尋求進一步支援。</li>
                     </ul>
                 `;
 
@@ -161,9 +188,9 @@
                 risks.innerHTML = `
                     <h3 class="text-lg font-semibold mb-2">資安風險</h3>
                     <ul class="list-disc pl-5">
-                        <li><strong>勒索軟體風險</strong>：${data.malwareType} 可能加密檔案或洩露資料，影響業務。</li>
-                        <li><strong>系統漏洞</strong>：過時作業系統易受攻擊，需升級。</li>
-                        <li><strong>提權風險</strong>：惡意檔案與核心進程相關，可能被用於取得系統控制權。</li>
+                        <li><strong>惡意軟體風險</strong>：${data.malwareType} 可能導致資料加密、洩露或業務中斷，尤其若處理失敗（如「${data.remediationStatus}」）。</li>
+                        <li><strong>系統漏洞</strong>：${data.os} 若為過時版本，易受已知漏洞攻擊，需立即升級。</li>
+                        <li><strong>提權風險</strong>：惡意檔案或進程與核心進程（如 ${data.parentProcess}）相關，可能被用於取得系統控制權。</li>
                     </ul>
                 `;
 
