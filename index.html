@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>CYNET 告警分析系統</title>
+    <style>
+        /* 原有樣式保留 */
+        body { font-family: 'Segoe UI', Arial, sans-serif; max-width: 1200px; margin: 20px auto; padding: 20px }
+        .upload-section { margin-bottom: 30px; padding: 15px; border: 2px dashed #ccc }
+        .alert-card { margin: 15px 0; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1) }
+        .critical { background-color: #ffe6e6; border-left: 5px solid #ff4444 }
+        .header { color: #2c3e50; margin-bottom: 10px }
+        table { width: 100%; border-collapse: collapse; margin: 10px 0 }
+        td, th { padding: 12px; border: 1px solid #ddd; text-align: left }
+        th { background-color: #f8f9fa }
+        .toggle-btn { cursor: pointer; color: #3498db; margin: 10px 0 }
+        .contact-info { background-color: #e8f4ff; padding: 15px; margin-top: 20px }
+        button { background-color: #4CAF50; color: white; padding: 10px 20px; border: none; cursor: pointer }
+        
+        /* 新增貼上區域樣式 */
+        .input-section { margin: 15px 0 }
+        .paste-area {
+            width: 100%;
+            height: 150px;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-family: monospace;
+            resize: vertical;
+        }
+        .input-group { margin: 20px 0 }
+        .input-title {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 8px;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <h1>CYNET 威脅告警分析平台</h1>
+    
+    <div class="upload-section">
+        <div class="input-group">
+            <span class="input-title">方式一：上傳告警檔案</span>
+            <input type="file" id="fileInput" accept=".txt">
+            <button onclick="parseFile()">解析上傳檔案</button>
+        </div>
+
+        <div class="input-group">
+            <span class="input-title">方式二：直接貼上內容</span>
+            <textarea 
+                id="pasteInput" 
+                class="paste-area" 
+                placeholder="請在此處貼上告警訊息..."
+            ></textarea>
+            <button onclick="parsePaste()">解析貼上內容</button>
+        </div>
+    </div>
+
+    <div id="results"></div>
+
+    <script>
+        // 共用解析功能
+        function parseContent(content) {
+            const parsedData = parseAlert(content);
+            displayResults(parsedData);
+        }
+
+        // 檔案解析功能
+        function parseFile() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('請先選擇要上傳的檔案');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                parseContent(e.target.result);
+            };
+            reader.readAsText(file);
+        }
+
+        // 貼上內容解析功能
+        function parsePaste() {
+            const pasteInput = document.getElementById('pasteInput');
+            const content = pasteInput.value.trim();
+            
+            if (!content) {
+                alert('請先貼上告警訊息內容');
+                return;
+            }
+
+            parseContent(content);
+        }
+
+        // 以下保持原有 parseAlert() 和 displayResults() 函式不變
+        function parseAlert(text) {
+            const sections = text.split('\n\n');
+            const result = {};
+
+            sections.forEach(section => {
+                const lines = section.split('\n');
+                const sectionTitle = lines[0].trim();
+                result[sectionTitle] = {};
+
+                lines.slice(1).forEach(line => {
+                    const [key, ...value] = line.split('\t');
+                    if (key && key.includes(':')) {
+                        const [cleanKey] = key.split(':');
+                        result[sectionTitle][cleanKey.trim()] = value.join(' ').trim();
+                    }
+                });
+            });
+
+            return result;
+        }
+
+        function displayResults(data) {
+            const container = document.getElementById('results');
+            let html = `
+                <div class="alert-card critical">
+                    <h2 class="header">${data['Ext_Mail 外部郵件！']['Classification']} 威脅</h2>
+                    <table>
+                        <tr><th>嚴重等級</th><td style="color:red">${data['INCIDENT DETAILS']['Severity']}</td></tr>
+                        <tr><th>發生時間 (UTC)</th><td>${data['INCIDENT DETAILS']['Created']}</td></tr>
+                        <tr><th>主機名稱</th><td>${data['HOSTS DETAILS']['Host Name']}</td></tr>
+                        <tr><th>IP 位址</th><td>${data['HOSTS DETAILS']['IP']}</td></tr>
+                    </table>
+
+                    <div class="toggle-btn" onclick="toggleDetails(this)">▼ 顯示詳細進程資訊</div>
+                    <div class="details" style="display:none">
+                        <h3>惡意檔案資訊</h3>
+                        <table>
+                            <tr><th>檔案路徑</th><td>${data['INCIDENT DESCRIPTION']['File Name']}</td></tr>
+                            <tr><th>威脅等級</th><td>${data['INCIDENT DESCRIPTION']['Malicious Threat Level']}</td></tr>
+                            <tr><th>處理狀態</th><td>${data['INCIDENT DESCRIPTION']['Remediation Status']}</td></tr>
+                        </table>
+
+                        <h3>進程鏈分析</h3>
+                        ${generateProcessTable('Process', data)}
+                        ${generateProcessTable('Parent Process', data)}
+                        ${generateProcessTable('Grandparent Process', data)}
+                    </div>
+                </div>
+
+                <div class="contact-info">
+                    <h3>緊急聯絡資訊</h3>
+                    <p>SOC 信箱: ${data['ANALYST CONTACT DETAILS']['SOC Email']}</p>
+                    <p>聯絡電話: ${data['ANALYST CONTACT DETAILS']['SOC Phone']}</p>
+                </div>
+            `;
+            container.innerHTML = html;
+        }
+
+        // 保持其他工具函式不變
+        function generateProcessTable(type, data) { /* 同前 */ }
+        function toggleDetails(btn) { /* 同前 */ }
+    </script>
+</body>
+</html>
