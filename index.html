@@ -16,26 +16,7 @@
         .toggle-btn { cursor: pointer; color: #3498db; margin: 10px 0 }
         .contact-info { background-color: #e8f4ff; padding: 15px; margin-top: 20px }
         button { background-color: #4CAF50; color: white; padding: 10px 20px; border: none; cursor: pointer }
-        
-        /* 新增貼上區域樣式 */
-        .input-section { margin: 15px 0 }
-        .paste-area {
-            width: 100%;
-            height: 150px;
-            padding: 12px;
-            border: 2px solid #ddd;
-            border-radius: 4px;
-            margin: 10px 0;
-            font-family: monospace;
-            resize: vertical;
-        }
-        .input-group { margin: 20px 0 }
-        .input-title {
-            font-weight: bold;
-            color: #2c3e50;
-            margin-bottom: 8px;
-            display: block;
-        }
+        .paste-area { width: 100%; height: 150px; padding: 12px; border: 2px solid #ddd; border-radius: 4px; margin: 10px 0 }
     </style>
 </head>
 <body>
@@ -43,32 +24,39 @@
     
     <div class="upload-section">
         <div class="input-group">
-            <span class="input-title">方式一：上傳告警檔案</span>
+            <strong>方式一：上傳告警檔案</strong><br>
             <input type="file" id="fileInput" accept=".txt">
-            <button onclick="parseFile()">解析上傳檔案</button>
+            <button id="uploadBtn">解析上傳檔案</button>
         </div>
 
         <div class="input-group">
-            <span class="input-title">方式二：直接貼上內容</span>
-            <textarea 
-                id="pasteInput" 
-                class="paste-area" 
-                placeholder="請在此處貼上告警訊息..."
-            ></textarea>
-            <button onclick="parsePaste()">解析貼上內容</button>
+            <strong>方式二：直接貼上內容</strong><br>
+            <textarea id="pasteInput" class="paste-area" placeholder="請在此處貼上告警訊息..."></textarea>
+            <button id="pasteBtn">解析貼上內容</button>
         </div>
     </div>
 
     <div id="results"></div>
 
     <script>
-        // 共用解析功能
+        // 改用事件監聽器避免DOM未載入問題
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('uploadBtn').addEventListener('click', parseFile);
+            document.getElementById('pasteBtn').addEventListener('click', parsePaste);
+        });
+
+        // 強化錯誤處理的解析功能
         function parseContent(content) {
-            const parsedData = parseAlert(content);
-            displayResults(parsedData);
+            try {
+                const parsedData = parseAlert(content);
+                displayResults(parsedData);
+            } catch (error) {
+                alert(`解析錯誤: ${error.message}`);
+                console.error('解析失敗:', error);
+            }
         }
 
-        // 檔案解析功能
+        // 改良版檔案解析功能
         function parseFile() {
             const fileInput = document.getElementById('fileInput');
             const file = fileInput.files[0];
@@ -79,13 +67,12 @@
             }
 
             const reader = new FileReader();
-            reader.onload = function(e) {
-                parseContent(e.target.result);
-            };
+            reader.onload = (e) => parseContent(e.target.result);
+            reader.onerror = (e) => alert(`檔案讀取錯誤: ${e.target.error.name}`);
             reader.readAsText(file);
         }
 
-        // 貼上內容解析功能
+        // 強化輸入檢查的貼上解析
         function parsePaste() {
             const pasteInput = document.getElementById('pasteInput');
             const content = pasteInput.value.trim();
@@ -98,10 +85,10 @@
             parseContent(content);
         }
 
-        // 以下保持原有 parseAlert() 和 displayResults() 函式不變
+        // 改良版解析器(增加容錯機制)
         function parseAlert(text) {
-            const sections = text.split('\n\n');
             const result = {};
+            const sections = text.split('\n\n').filter(s => s.trim() !== '');
 
             sections.forEach(section => {
                 const lines = section.split('\n');
@@ -109,10 +96,15 @@
                 result[sectionTitle] = {};
 
                 lines.slice(1).forEach(line => {
-                    const [key, ...value] = line.split('\t');
-                    if (key && key.includes(':')) {
-                        const [cleanKey] = key.split(':');
-                        result[sectionTitle][cleanKey.trim()] = value.join(' ').trim();
+                    const trimmedLine = line.trim();
+                    if (trimmedLine.includes(':')) {
+                        const [keyPart, ...valueParts] = trimmedLine.split(':');
+                        const key = keyPart.trim();
+                        const value = valueParts.join(':').trim();
+                        result[sectionTitle][key] = value;
+                    } else if (trimmedLine.includes('\t')) {
+                        const [key, ...value] = trimmedLine.split('\t');
+                        result[sectionTitle][key.trim()] = value.join(' ').trim();
                     }
                 });
             });
@@ -120,25 +112,36 @@
             return result;
         }
 
+        // 安全版顯示功能
         function displayResults(data) {
             const container = document.getElementById('results');
+            
+            // 安全取值函式
+            const safeGet = (obj, path, defaultValue = 'N/A') => {
+                try {
+                    return path.split('.').reduce((o, p) => o[p], obj) || defaultValue;
+                } catch {
+                    return defaultValue;
+                }
+            };
+
             let html = `
                 <div class="alert-card critical">
-                    <h2 class="header">${data['Ext_Mail 外部郵件！']['Classification']} 威脅</h2>
+                    <h2 class="header">${safeGet(data, 'Ext_Mail 外部郵件！.Classification')} 威脅</h2>
                     <table>
-                        <tr><th>嚴重等級</th><td style="color:red">${data['INCIDENT DETAILS']['Severity']}</td></tr>
-                        <tr><th>發生時間 (UTC)</th><td>${data['INCIDENT DETAILS']['Created']}</td></tr>
-                        <tr><th>主機名稱</th><td>${data['HOSTS DETAILS']['Host Name']}</td></tr>
-                        <tr><th>IP 位址</th><td>${data['HOSTS DETAILS']['IP']}</td></tr>
+                        <tr><th>嚴重等級</th><td style="color:red">${safeGet(data, 'INCIDENT DETAILS.Severity')}</td></tr>
+                        <tr><th>發生時間 (UTC)</th><td>${safeGet(data, 'INCIDENT DETAILS.Created')}</td></tr>
+                        <tr><th>主機名稱</th><td>${safeGet(data, 'HOSTS DETAILS.Host Name')}</td></tr>
+                        <tr><th>IP 位址</th><td>${safeGet(data, 'HOSTS DETAILS.IP')}</td></tr>
                     </table>
 
                     <div class="toggle-btn" onclick="toggleDetails(this)">▼ 顯示詳細進程資訊</div>
                     <div class="details" style="display:none">
                         <h3>惡意檔案資訊</h3>
                         <table>
-                            <tr><th>檔案路徑</th><td>${data['INCIDENT DESCRIPTION']['File Name']}</td></tr>
-                            <tr><th>威脅等級</th><td>${data['INCIDENT DESCRIPTION']['Malicious Threat Level']}</td></tr>
-                            <tr><th>處理狀態</th><td>${data['INCIDENT DESCRIPTION']['Remediation Status']}</td></tr>
+                            <tr><th>檔案路徑</th><td>${safeGet(data, 'INCIDENT DESCRIPTION.File Name')}</td></tr>
+                            <tr><th>威脅等級</th><td>${safeGet(data, 'INCIDENT DESCRIPTION.Malicious Threat Level')}</td></tr>
+                            <tr><th>處理狀態</th><td>${safeGet(data, 'INCIDENT DESCRIPTION.Remediation Status')}</td></tr>
                         </table>
 
                         <h3>進程鏈分析</h3>
@@ -150,16 +153,43 @@
 
                 <div class="contact-info">
                     <h3>緊急聯絡資訊</h3>
-                    <p>SOC 信箱: ${data['ANALYST CONTACT DETAILS']['SOC Email']}</p>
-                    <p>聯絡電話: ${data['ANALYST CONTACT DETAILS']['SOC Phone']}</p>
+                    <p>SOC 信箱: ${safeGet(data, 'ANALYST CONTACT DETAILS.SOC Email')}</p>
+                    <p>聯絡電話: ${safeGet(data, 'ANALYST CONTACT DETAILS.SOC Phone')}</p>
                 </div>
             `;
             container.innerHTML = html;
         }
 
-        // 保持其他工具函式不變
-        function generateProcessTable(type, data) { /* 同前 */ }
-        function toggleDetails(btn) { /* 同前 */ }
+        // 安全版進程表格生成
+        function generateProcessTable(type, data) {
+            const prefix = type.replace(' ', '');
+            return `
+                <h4>${type} 詳細資訊</h4>
+                <table>
+                    <tr><th>SHA256</th><td>${safeGet(data, `INCIDENT DESCRIPTION.${prefix}SHA256`)}</td></tr>
+                    <tr><th>執行路徑</th><td>${safeGet(data, `INCIDENT DESCRIPTION.${prefix}Path`)}</td></tr>
+                    <tr><th>數位簽章</th><td>${safeGet(data, `INCIDENT DESCRIPTION.${prefix}is signed`)}</td></tr>
+                </table>
+            `;
+        }
+
+        // 安全取值函式暴露到全域
+        window.safeGet = function(obj, path, defaultValue = 'N/A') {
+            try {
+                return path.split('.').reduce((o, p) => o[p], obj) || defaultValue;
+            } catch {
+                return defaultValue;
+            }
+        };
+
+        // 切換顯示功能
+        window.toggleDetails = function(btn) {
+            const details = btn.nextElementSibling;
+            details.style.display = details.style.display === 'none' ? 'block' : 'none';
+            btn.textContent = details.style.display === 'none' 
+                ? '▼ 顯示詳細進程資訊' 
+                : '▲ 隱藏詳細資訊';
+        };
     </script>
 </body>
 </html>
