@@ -1,195 +1,175 @@
 <!DOCTYPE html>
-<html lang="zh-Hant-TW">
+<html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>CYNET 告警分析系統</title>
-    <style>
-        /* 原有樣式保留 */
-        body { font-family: 'Segoe UI', Arial, sans-serif; max-width: 1200px; margin: 20px auto; padding: 20px }
-        .upload-section { margin-bottom: 30px; padding: 15px; border: 2px dashed #ccc }
-        .alert-card { margin: 15px 0; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1) }
-        .critical { background-color: #ffe6e6; border-left: 5px solid #ff4444 }
-        .header { color: #2c3e50; margin-bottom: 10px }
-        table { width: 100%; border-collapse: collapse; margin: 10px 0 }
-        td, th { padding: 12px; border: 1px solid #ddd; text-align: left }
-        th { background-color: #f8f9fa }
-        .toggle-btn { cursor: pointer; color: #3498db; margin: 10px 0 }
-        .contact-info { background-color: #e8f4ff; padding: 15px; margin-top: 20px }
-        button { background-color: #4CAF50; color: white; padding: 10px 20px; border: none; cursor: pointer }
-        .paste-area { width: 100%; height: 150px; padding: 12px; border: 2px solid #ddd; border-radius: 4px; margin: 10px 0 }
-    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>資安事件分析工具</title>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-    <h1>CYNET 威脅告警分析平台</h1>
-    
-    <div class="upload-section">
-        <div class="input-group">
-            <strong>方式一：上傳告警檔案</strong><br>
-            <input type="file" id="fileInput" accept=".txt">
-            <button id="uploadBtn">解析上傳檔案</button>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+    <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-2xl">
+        <h1 class="text-2xl font-bold mb-4 text-center">資安事件分析工具</h1>
+        <p class="text-gray-600 mb-4">請上傳資安事件報告檔案（.txt）或直接貼上文字內容進行分析。</p>
+        
+        <!-- File Upload -->
+        <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-700 mb-2">上傳檔案</label>
+            <input type="file" id="fileInput" accept=".txt" class="w-full p-2 border rounded">
         </div>
-
-        <div class="input-group">
-            <strong>方式二：直接貼上內容</strong><br>
-            <textarea id="pasteInput" class="paste-area" placeholder="請在此處貼上告警訊息..."></textarea>
-            <button id="pasteBtn">解析貼上內容</button>
+        
+        <!-- Textarea for Pasting -->
+        <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-700 mb-2">或貼上事件報告內容</label>
+            <textarea id="textInput" rows="8" class="w-full p-2 border rounded" placeholder="在此貼上資安事件報告內容..."></textarea>
+        </div>
+        
+        <!-- Analyze Button -->
+        <button onclick="analyzeIncident()" class="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600">分析報告</button>
+        
+        <!-- Output Area -->
+        <div id="output" class="mt-6 hidden">
+            <h2 class="text-xl font-semibold mb-4">分析結果</h2>
+            <table class="w-full border-collapse border border-gray-300">
+                <thead>
+                    <tr class="bg-gray-200">
+                        <th class="border border-gray-300 p-2">類別</th>
+                        <th class="border border-gray-300 p-2">詳情</th>
+                    </tr>
+                </thead>
+                <tbody id="outputTable"></tbody>
+            </table>
+            <div id="recommendations" class="mt-4"></div>
+            <div id="risks" class="mt-4"></div>
         </div>
     </div>
 
-    <div id="results"></div>
-
     <script>
-        // 改用事件監聽器避免DOM未載入問題
-        document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('uploadBtn').addEventListener('click', parseFile);
-            document.getElementById('pasteBtn').addEventListener('click', parsePaste);
-        });
-
-        // 強化錯誤處理的解析功能
-        function parseContent(content) {
-            try {
-                const parsedData = parseAlert(content);
-                displayResults(parsedData);
-            } catch (error) {
-                alert(`解析錯誤: ${error.message}`);
-                console.error('解析失敗:', error);
-            }
-        }
-
-        // 改良版檔案解析功能
-        function parseFile() {
+        function analyzeIncident() {
             const fileInput = document.getElementById('fileInput');
-            const file = fileInput.files[0];
-            
-            if (!file) {
-                alert('請先選擇要上傳的檔案');
+            const textInput = document.getElementById('textInput');
+            const output = document.getElementById('output');
+            const outputTable = document.getElementById('outputTable');
+            const recommendations = document.getElementById('recommendations');
+            const risks = document.getElementById('risks');
+
+            // Reset output
+            outputTable.innerHTML = '';
+            recommendations.innerHTML = '';
+            risks.innerHTML = '';
+            output.classList.add('hidden');
+
+            // Handle file or text input
+            if (fileInput.files.length > 0) {
+                const file = fileInput.files[0];
+                if (file.type !== 'text/plain') {
+                    alert('請上傳 .txt 檔案！');
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    processIncident(e.target.result);
+                };
+                reader.readAsText(file);
+            } else if (textInput.value.trim()) {
+                processIncident(textInput.value);
+            } else {
+                alert('請上傳檔案或輸入文字內容！');
                 return;
             }
 
-            const reader = new FileReader();
-            reader.onload = (e) => parseContent(e.target.result);
-            reader.onerror = (e) => alert(`檔案讀取錯誤: ${e.target.error.name}`);
-            reader.readAsText(file);
-        }
+            function processIncident(text) {
+                // Initialize data object
+                const data = {
+                    classification: '',
+                    severity: '',
+                    detectionTimeLocal: '',
+                    detectionTimeUTC: '',
+                    malwareType: '',
+                    remediationStatus: '',
+                    hostName: '',
+                    hostIP: '',
+                    os: '',
+                    filePath: '',
+                    fileSignature: '',
+                    fileSHA256: '',
+                    parentProcess: '',
+                    grandparentProcess: '',
+                    socEmail: '',
+                    socPhone: ''
+                };
 
-        // 強化輸入檢查的貼上解析
-        function parsePaste() {
-            const pasteInput = document.getElementById('pasteInput');
-            const content = pasteInput.value.trim();
-            
-            if (!content) {
-                alert('請先貼上告警訊息內容');
-                return;
-            }
+                // Parse text for key fields
+                const lines = text.split('\n');
+                lines.forEach(line => {
+                    if (line.includes('Classification:')) data.classification = line.split('Classification:')[1].trim();
+                    if (line.includes('Severity:')) data.severity = line.split('Severity:')[1].trim();
+                    if (line.includes('Detection Time Local')) data.detectionTimeLocal = line.split('Detection Time Local')[1].trim();
+                    if (line.includes('Detection Time UTC')) data.detectionTimeUTC = line.split('Detection Time UTC')[1].trim();
+                    if (line.includes('Malware Type')) data.malwareType = line.split('Malware Type')[1].trim();
+                    if (line.includes('Remediation Status')) data.remediationStatus = line.split('Remediation Status')[1].trim();
+                    if (line.includes('Hostname')) data.hostName = line.split('Hostname')[1].trim();
+                    if (line.includes('Host Ip')) data.hostIP = line.split('Host Ip')[1].trim();
+                    if (line.includes('OS Version')) data.os = line.split('OS Version')[1].trim();
+                    if (line.includes('Infected file')) data.filePath = line.split('Infected file')[1].trim();
+                    if (line.includes('Infected file SignatureStatus')) data.fileSignature = line.split('Infected file SignatureStatus')[1].trim();
+                    if (line.includes('Infected file SHA256')) data.fileSHA256 = line.split('Infected file SHA256')[1].trim();
+                    if (line.includes('Process Path') && line.includes('lsass.exe')) data.parentProcess = line.split('Process Path')[1].trim();
+                    if (line.includes('Process Path') && line.includes('wininit.exe')) data.grandparentProcess = line.split('Process Path')[1].trim();
+                    if (line.includes('SOC Email')) data.socEmail = line.split('SOC Email')[1].trim();
+                    if (line.includes('SOC Phone')) data.socPhone = line.split('SOC Phone')[1].trim().replace(/US:/g, '美國:').replace(/EU:/g, '歐洲:').replace(/IL:/g, '以色列:');
+                });
 
-            parseContent(content);
-        }
+                // Generate table rows
+                const fields = [
+                    { label: '事件分類', value: data.classification },
+                    { label: '嚴重性', value: data.severity },
+                    { label: '檢測時間 (本地)', value: data.detectionTimeLocal },
+                    { label: '檢測時間 (UTC)', value: data.detectionTimeUTC },
+                    { label: '惡意軟體類型', value: data.malwareType },
+                    { label: '處理狀態', value: data.remediationStatus },
+                    { label: '主機名稱', value: data.hostName },
+                    { label: '主機 IP', value: data.hostIP },
+                    { label: '作業系統', value: data.os },
+                    { label: '受感染檔案', value: data.filePath },
+                    { label: '檔案簽章', value: data.fileSignature },
+                    { label: '檔案 SHA256', value: data.fileSHA256 },
+                    { label: '父進程', value: data.parentProcess },
+                    { label: '祖父進程', value: data.grandparentProcess },
+                    { label: 'SOC 聯繫方式', value: `${data.socEmail}<br>${data.socPhone}` }
+                ];
 
-        // 改良版解析器(增加容錯機制)
-        function parseAlert(text) {
-            const result = {};
-            const sections = text.split('\n\n').filter(s => s.trim() !== '');
-
-            sections.forEach(section => {
-                const lines = section.split('\n');
-                const sectionTitle = lines[0].trim();
-                result[sectionTitle] = {};
-
-                lines.slice(1).forEach(line => {
-                    const trimmedLine = line.trim();
-                    if (trimmedLine.includes(':')) {
-                        const [keyPart, ...valueParts] = trimmedLine.split(':');
-                        const key = keyPart.trim();
-                        const value = valueParts.join(':').trim();
-                        result[sectionTitle][key] = value;
-                    } else if (trimmedLine.includes('\t')) {
-                        const [key, ...value] = trimmedLine.split('\t');
-                        result[sectionTitle][key.trim()] = value.join(' ').trim();
+                fields.forEach(field => {
+                    if (field.value) {
+                        const row = `<tr><td class="border border-gray-300 p-2 font-semibold">${field.label}</td><td class="border border-gray-300 p-2">${field.value}</td></tr>`;
+                        outputTable.innerHTML += row;
                     }
                 });
-            });
 
-            return result;
-        }
+                // Recommendations
+                recommendations.innerHTML = `
+                    <h3 class="text-lg font-semibold mb-2">檢查建議</h3>
+                    <ul class="list-disc pl-5">
+                        <li>確認檔案 <code>${data.filePath}</code> 是否已重新命名為 .cynet。</li>
+                        <li>使用防毒軟體對主機 ${data.hostName} (${data.hostIP}) 進行全系統掃描。</li>
+                        <li>檢查進程 <code>${data.parentProcess}</code> 和 <code>${data.grandparentProcess}</code> 是否異常。</li>
+                        <li>監控主機網路活動，確認無異常連線。</li>
+                        <li>升級 ${data.os} 至受支援版本（該系統已停止支援）。</li>
+                    </ul>
+                `;
 
-        // 安全版顯示功能
-        function displayResults(data) {
-            const container = document.getElementById('results');
-            
-            // 安全取值函式
-            const safeGet = (obj, path, defaultValue = 'N/A') => {
-                try {
-                    return path.split('.').reduce((o, p) => o[p], obj) || defaultValue;
-                } catch {
-                    return defaultValue;
-                }
-            };
+                // Risks
+                risks.innerHTML = `
+                    <h3 class="text-lg font-semibold mb-2">資安風險</h3>
+                    <ul class="list-disc pl-5">
+                        <li><strong>勒索軟體風險</strong>：${data.malwareType} 可能加密檔案或洩露資料，影響業務。</li>
+                        <li><strong>系統漏洞</strong>：過時作業系統易受攻擊，需升級。</li>
+                        <li><strong>提權風險</strong>：惡意檔案與核心進程相關，可能被用於取得系統控制權。</li>
+                    </ul>
+                `;
 
-            let html = `
-                <div class="alert-card critical">
-                    <h2 class="header">${safeGet(data, 'Ext_Mail 外部郵件！.Classification')} 威脅</h2>
-                    <table>
-                        <tr><th>嚴重等級</th><td style="color:red">${safeGet(data, 'INCIDENT DETAILS.Severity')}</td></tr>
-                        <tr><th>發生時間 (UTC)</th><td>${safeGet(data, 'INCIDENT DETAILS.Created')}</td></tr>
-                        <tr><th>主機名稱</th><td>${safeGet(data, 'HOSTS DETAILS.Host Name')}</td></tr>
-                        <tr><th>IP 位址</th><td>${safeGet(data, 'HOSTS DETAILS.IP')}</td></tr>
-                    </table>
-
-                    <div class="toggle-btn" onclick="toggleDetails(this)">▼ 顯示詳細進程資訊</div>
-                    <div class="details" style="display:none">
-                        <h3>惡意檔案資訊</h3>
-                        <table>
-                            <tr><th>檔案路徑</th><td>${safeGet(data, 'INCIDENT DESCRIPTION.File Name')}</td></tr>
-                            <tr><th>威脅等級</th><td>${safeGet(data, 'INCIDENT DESCRIPTION.Malicious Threat Level')}</td></tr>
-                            <tr><th>處理狀態</th><td>${safeGet(data, 'INCIDENT DESCRIPTION.Remediation Status')}</td></tr>
-                        </table>
-
-                        <h3>進程鏈分析</h3>
-                        ${generateProcessTable('Process', data)}
-                        ${generateProcessTable('Parent Process', data)}
-                        ${generateProcessTable('Grandparent Process', data)}
-                    </div>
-                </div>
-
-                <div class="contact-info">
-                    <h3>緊急聯絡資訊</h3>
-                    <p>SOC 信箱: ${safeGet(data, 'ANALYST CONTACT DETAILS.SOC Email')}</p>
-                    <p>聯絡電話: ${safeGet(data, 'ANALYST CONTACT DETAILS.SOC Phone')}</p>
-                </div>
-            `;
-            container.innerHTML = html;
-        }
-
-        // 安全版進程表格生成
-        function generateProcessTable(type, data) {
-            const prefix = type.replace(' ', '');
-            return `
-                <h4>${type} 詳細資訊</h4>
-                <table>
-                    <tr><th>SHA256</th><td>${safeGet(data, `INCIDENT DESCRIPTION.${prefix}SHA256`)}</td></tr>
-                    <tr><th>執行路徑</th><td>${safeGet(data, `INCIDENT DESCRIPTION.${prefix}Path`)}</td></tr>
-                    <tr><th>數位簽章</th><td>${safeGet(data, `INCIDENT DESCRIPTION.${prefix}is signed`)}</td></tr>
-                </table>
-            `;
-        }
-
-        // 安全取值函式暴露到全域
-        window.safeGet = function(obj, path, defaultValue = 'N/A') {
-            try {
-                return path.split('.').reduce((o, p) => o[p], obj) || defaultValue;
-            } catch {
-                return defaultValue;
+                output.classList.remove('hidden');
             }
-        };
-
-        // 切換顯示功能
-        window.toggleDetails = function(btn) {
-            const details = btn.nextElementSibling;
-            details.style.display = details.style.display === 'none' ? 'block' : 'none';
-            btn.textContent = details.style.display === 'none' 
-                ? '▼ 顯示詳細進程資訊' 
-                : '▲ 隱藏詳細資訊';
-        };
+        }
     </script>
 </body>
 </html>
